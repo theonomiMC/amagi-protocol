@@ -451,13 +451,21 @@ contract AmagiPoolTest is Test {
     }
 
     function test_price_highDecimalsBranch() public {
-        price.setDecimals(20);
-        price.setPrice(2000 * 1e20);
+        MockPriceFeed highDecPriceFeed = new MockPriceFeed(2000 * 1e20);
+        highDecPriceFeed.setDecimals(20);
+        AmagiPool highDecPool = new AmagiPool(address(usdc), address(highDecPriceFeed));
 
-        _setupBorrowPosition(user, 1 ether, 100e6);
+        uint256 normalizedPrice = highDecPool.getPrice();
 
-        (uint256 collateral,,) = pool.users(user);
-        uint256 collateralValue = (collateral * pool.getPrice()) / pool.PRECISION();
+        assertEq(normalizedPrice, 2000e18, "Normalization from 20 decimals failed");
+
+        vm.deal(user, 1 ether);
+        vm.startPrank(user);
+        highDecPool.depositCollateral{value: 1 ether}();
+        vm.stopPrank();
+
+        (uint256 collateral,,) = highDecPool.users(user);
+        uint256 collateralValue = (collateral * normalizedPrice) / highDecPool.PRECISION();
 
         assertEq(collateralValue, 2000e18);
     }

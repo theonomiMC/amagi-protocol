@@ -24,6 +24,7 @@ contract AmagiPool is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable USDC;
+    uint8 public immutable PRICE_FEED_DECIMALS;
     AggregatorV3Interface public priceFeed;
 
     uint256 public constant PRECISION = 1e18;
@@ -54,6 +55,7 @@ contract AmagiPool is ReentrancyGuard {
     constructor(address _usdc, address _priceFeed) {
         USDC = IERC20(_usdc);
         priceFeed = AggregatorV3Interface(_priceFeed);
+        PRICE_FEED_DECIMALS = priceFeed.decimals();
 
         globalBorrowIndex = PRECISION; // 1e18
         lastUpdatedIndex = block.timestamp;
@@ -104,15 +106,12 @@ contract AmagiPool is ReentrancyGuard {
     function withdrawCollateral(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
 
-        _updateIndex();
-
+        uint256 index = _updateIndex();
         UserData storage user = users[msg.sender];
 
         if (user.collateral < amount) revert InsufficientBalance();
 
         uint256 price = _price();
-        uint256 index = globalBorrowIndex;
-
         unchecked {
             user.collateral -= amount;
         }
@@ -133,11 +132,9 @@ contract AmagiPool is ReentrancyGuard {
     function borrow(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
 
-        _updateIndex();
+        uint256 index = _updateIndex();
 
         UserData storage user = users[msg.sender];
-
-        uint256 index = globalBorrowIndex;
         uint256 price = _price();
 
         uint256 collateralValue = (user.collateral * price) / PRECISION;
@@ -164,12 +161,9 @@ contract AmagiPool is ReentrancyGuard {
     function repay(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
 
-        _updateIndex();
+        uint256 index = _updateIndex();
 
         UserData storage user = users[msg.sender];
-
-        uint256 index = globalBorrowIndex;
-
         uint256 debt = (user.borrowShares * index) / PRECISION;
         uint256 scaled = amount * USDC_SCALE;
 
@@ -191,11 +185,9 @@ contract AmagiPool is ReentrancyGuard {
     function liquidate(address target, uint256 debtToCover) external nonReentrant {
         if (debtToCover == 0) revert ZeroAmount();
 
-        _updateIndex();
+        uint256 index = _updateIndex();
 
         UserData storage user = users[target];
-
-        uint256 index = globalBorrowIndex;
         uint256 price = _price();
 
         uint256 collateralValue = (user.collateral * price) / PRECISION;
@@ -245,7 +237,7 @@ contract AmagiPool is ReentrancyGuard {
     function _price() internal view returns (uint256) {
         (, int256 p,, uint256 updatedAt,) = priceFeed.latestRoundData();
 
-        uint8 decimals = priceFeed.decimals();
+        uint8 decimals = PRICE_FEED_DECIMALS;
 
         if (p <= 0) revert InvalidPrice();
         if (block.timestamp - updatedAt > 24 hours) revert PriceExpired();
