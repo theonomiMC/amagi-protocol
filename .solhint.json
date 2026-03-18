@@ -1,0 +1,11 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "compiler-fixed": "off",
+    "var-name-mixedcase": "off",
+    "const-name-snakecase": "off",
+    "separate-by-one-line-in-contract": "off",
+    "two-lines-top-level-separator": "off",
+    "indent": "off"
+  }
+}
