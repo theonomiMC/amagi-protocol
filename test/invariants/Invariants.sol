@@ -14,27 +14,21 @@ contract AmagiInvariants is BaseTest {
     }
 
     // HELPER
-    function getHealthFactor(
-        uint256 collateral,
-        uint256 borrowShares
-    ) internal view returns (uint256) {
+    function getHealthFactor(uint256 collateral, uint256 borrowShares) internal view returns (uint256) {
         if (borrowShares == 0) return type(uint256).max;
 
-        uint256 debt = (borrowShares * pool.globalBorrowIndex()) /
-            pool.PRECISION();
+        uint256 debt = (borrowShares * pool.globalBorrowIndex()) / pool.PRECISION();
 
         if (debt == 0) return type(uint256).max;
 
-        uint256 hf = (collateral * pool.getPrice() * pool.LIQ_THRESHOLD()) /
-            (100 * debt);
+        uint256 hf = (collateral * pool.getPrice() * pool.LIQ_THRESHOLD()) / (100 * debt);
         return hf;
     }
 
     // Invariant 1: Solvency
     function invariant_solvency() public view {
-        uint256 totalPlus = handler.ghost_totalDeposits() +
-            handler.ghost_totalRepaid() +
-            handler.ghost_totalLiquidated();
+        uint256 totalPlus = handler.ghost_totalDeposits() + handler.ghost_totalRepaid()
+            + handler.ghost_totalLiquidated();
 
         uint256 totalMinus = handler.ghost_totalBorrowed();
 
@@ -47,14 +41,12 @@ contract AmagiInvariants is BaseTest {
         uint256 len = handler.activeBorrowersLength();
         for (uint256 i; i < len; i++) {
             address user = handler.activeBorrowersAt(i);
-            (uint128 collateral, uint128 borrowShares, ) = pool.users(user);
+            (uint128 collateral, uint128 borrowShares,) = pool.users(user);
 
             if (borrowShares == 0) continue;
 
-            uint256 debt = (uint256(borrowShares) * pool.globalBorrowIndex()) /
-                pool.PRECISION();
-            uint256 collateralValue = (uint256(collateral) * pool.getPrice()) /
-                pool.PRECISION();
+            uint256 debt = (uint256(borrowShares) * pool.globalBorrowIndex()) / pool.PRECISION();
+            uint256 collateralValue = (uint256(collateral) * pool.getPrice()) / pool.PRECISION();
 
             assertGe(collateralValue, debt, "Protocol has Bad Debt!");
         }
@@ -65,14 +57,11 @@ contract AmagiInvariants is BaseTest {
         uint256 len = handler.activeBorrowersLength();
         for (uint256 i; i < len; i++) {
             address user = handler.activeBorrowersAt(i);
-            (uint128 collateral, uint128 borrowShares, ) = pool.users(user);
+            (uint128 collateral, uint128 borrowShares,) = pool.users(user);
 
             if (borrowShares == 0) continue;
 
-            uint256 hf = getHealthFactor(
-                uint256(collateral),
-                uint256(borrowShares)
-            );
+            uint256 hf = getHealthFactor(uint256(collateral), uint256(borrowShares));
 
             assertGe(hf, pool.PRECISION(), "Protocol has Bad Debt!");
         }
@@ -80,10 +69,6 @@ contract AmagiInvariants is BaseTest {
 
     // Invariant 4:
     function invariant_indexMonotonicity() public view {
-        assertGe(
-            pool.globalBorrowIndex(),
-            handler.previousIndex(),
-            "Index decreased"
-        );
+        assertGe(pool.globalBorrowIndex(), handler.previousIndex(), "Index decreased");
     }
 }

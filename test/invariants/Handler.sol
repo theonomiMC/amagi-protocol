@@ -28,7 +28,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     uint256 public ghost_totalRepaid;
     uint256 public ghost_totalLiquidated;
 
-    constructor(AmagiPool _pool, MockUSDC _usdc,MockPriceFeed _priceFeed) {
+    constructor(AmagiPool _pool, MockUSDC _usdc, MockPriceFeed _priceFeed) {
         pool = _pool;
         usdc = _usdc;
         priceFeed = _priceFeed;
@@ -44,6 +44,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         _;
         vm.stopPrank();
     }
+
     // VIEW
     function activeBorrowersLength() public view returns (uint256) {
         return activeBorrowers.length;
@@ -52,6 +53,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     function activeBorrowersAt(uint256 i) public view returns (address) {
         return activeBorrowers[i];
     }
+
     // MAIN
     function deposit(uint256 amount, uint256 seed) public useActor(seed) {
         amount = bound(amount, 1e6, 1_000_000e6);
@@ -63,10 +65,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         previousIndex = pool.globalBorrowIndex();
     }
 
-    function depositCollateral(
-        uint256 amount,
-        uint256 seed
-    ) public useActor(seed) {
+    function depositCollateral(uint256 amount, uint256 seed) public useActor(seed) {
         amount = bound(amount, 0.1 ether, 10_000_000 ether);
         vm.deal(currentActor, amount);
         pool.depositCollateral{value: amount}();
@@ -74,7 +73,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     }
 
     function withdraw(uint256 amount, uint256 seed) public useActor(seed) {
-        (, , uint256 userDeposit) = pool.users(currentActor);
+        (,, uint256 userDeposit) = pool.users(currentActor);
         if (userDeposit == 0) return;
 
         amount = bound(amount, 1, userDeposit / pool.USDC_SCALE());
@@ -90,12 +89,11 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     }
 
     function borrow(uint256 amount, uint256 seed) public useActor(seed) {
-        (uint128 collateral, , ) = pool.users(currentActor);
+        (uint128 collateral,,) = pool.users(currentActor);
         if (collateral == 0) return;
 
         uint256 price = pool.getPrice();
-        uint256 maxBorrow = (uint256(collateral) * price * pool.LTV()) /
-            (pool.PRECISION() * 100);
+        uint256 maxBorrow = (uint256(collateral) * price * pool.LTV()) / (pool.PRECISION() * 100);
         if (maxBorrow == 0) return;
 
         amount = bound(amount, 1, maxBorrow / pool.USDC_SCALE());
@@ -111,11 +109,10 @@ contract Handler is CommonBase, StdCheats, StdUtils {
     }
 
     function repay(uint256 amount, uint256 seed) public useActor(seed) {
-        (, uint128 borrowShares, ) = pool.users(currentActor);
+        (, uint128 borrowShares,) = pool.users(currentActor);
         if (borrowShares == 0) return;
 
-        uint256 debt = (uint256(borrowShares) * pool.globalBorrowIndex()) /
-            pool.PRECISION();
+        uint256 debt = (uint256(borrowShares) * pool.globalBorrowIndex()) / pool.PRECISION();
         if (debt == 0) return;
 
         uint256 maxRepay = debt / pool.USDC_SCALE();
@@ -128,7 +125,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
         try pool.repay(amount) {
             ghost_totalRepaid += amount * pool.USDC_SCALE();
-            (, uint128 newShares, ) = pool.users(currentActor);
+            (, uint128 newShares,) = pool.users(currentActor);
 
             if (newShares == 0 && isBorrower[currentActor]) {
                 isBorrower[currentActor] = false;
@@ -139,15 +136,13 @@ contract Handler is CommonBase, StdCheats, StdUtils {
 
     function liquidate(uint256 amount, uint256 targetSeed) public {
         address target = actors[bound(targetSeed, 0, actors.length - 1)];
-        (uint128 collateral, uint128 borrowShares, ) = pool.users(target);
+        (uint128 collateral, uint128 borrowShares,) = pool.users(target);
         if (borrowShares == 0) return;
 
         uint256 price = pool.getPrice();
-        uint256 debt = (uint256(borrowShares) * pool.globalBorrowIndex()) /
-            pool.PRECISION();
+        uint256 debt = (uint256(borrowShares) * pool.globalBorrowIndex()) / pool.PRECISION();
 
-        uint256 hf = (uint256(collateral) * price * pool.LIQ_THRESHOLD()) /
-            (100 * debt);
+        uint256 hf = (uint256(collateral) * price * pool.LIQ_THRESHOLD()) / (100 * debt);
 
         if (hf >= pool.PRECISION()) return;
 
@@ -166,6 +161,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
         vm.stopPrank();
         previousIndex = pool.globalBorrowIndex();
     }
+
     // PRICE
     function forwaredTime(uint256 _time) public {
         uint256 time = bound(_time, 60, 30 days);

@@ -25,15 +25,9 @@ abstract contract BaseTest is Test {
         priceFeed = new MockPriceFeed(INIT_PRICE);
 
         AmagiPool impl = new AmagiPool();
-        bytes memory data = abi.encodeWithSelector(
-            AmagiPool.initialize.selector,
-            address(usdc),
-            address(priceFeed)
-        );
+        bytes memory data = abi.encodeWithSelector(AmagiPool.initialize.selector, address(usdc), address(priceFeed));
 
-        pool = AmagiPool(
-            payable(address(new ERC1967Proxy(address(impl), data)))
-        );
+        pool = AmagiPool(payable(address(new ERC1967Proxy(address(impl), data))));
 
         vm.stopPrank();
 

@@ -2,7 +2,18 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {AmagiPool, ZeroAmount, InsufficientBalance, InsufficientCollateral, HealthFactorOk, InvalidHealthFactor, InsufficientLiquidity, TransferFailed, PriceExpired, InvalidPrice} from "../src/AmagiPool.sol";
+import {
+    AmagiPool,
+    ZeroAmount,
+    InsufficientBalance,
+    InsufficientCollateral,
+    HealthFactorOk,
+    InvalidHealthFactor,
+    InsufficientLiquidity,
+    TransferFailed,
+    PriceExpired,
+    InvalidPrice
+} from "../src/AmagiPool.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {MockPriceFeed} from "./mocks/MockPriceFeed.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -27,11 +38,7 @@ contract AmagiPoolTest is Test {
         // deploy implementation
         AmagiPool implementation = new AmagiPool();
 
-        bytes memory data = abi.encodeWithSelector(
-            AmagiPool.initialize.selector,
-            address(usdc),
-            address(price)
-        );
+        bytes memory data = abi.encodeWithSelector(AmagiPool.initialize.selector, address(usdc), address(price));
         // depoly proxy
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), data);
         pool = AmagiPool(payable(address(proxy)));
@@ -65,11 +72,7 @@ contract AmagiPoolTest is Test {
         price.setPrice(int256(newPrice));
     }
 
-    function _setupBorrowPosition(
-        address _user,
-        uint256 ethAmount,
-        uint256 borrowAmount
-    ) internal {
+    function _setupBorrowPosition(address _user, uint256 ethAmount, uint256 borrowAmount) internal {
         vm.deal(_user, ethAmount);
         usdc.mint(address(pool), borrowAmount * 2);
 
@@ -79,31 +82,24 @@ contract AmagiPoolTest is Test {
         vm.stopPrank();
     }
 
-    function _setupLiquidate(
-        uint256 debtToCover,
-        uint256 _price
-    )
+    function _setupLiquidate(uint256 debtToCover, uint256 _price)
         internal
         view
         returns (uint256 expectedCollateralOut, uint256 expectedSharesRemoved)
     {
         uint256 scaledDebt = debtToCover * pool.USDC_SCALE();
         // Collateral Out: (Debt * 1e18 * 105) / (Price * 100)
-        expectedCollateralOut =
-            (scaledDebt * pool.PRECISION() * (100 + pool.LIQ_BONUS())) /
-            (_price * 100);
+        expectedCollateralOut = (scaledDebt * pool.PRECISION() * (100 + pool.LIQ_BONUS())) / (_price * 100);
 
         // Shares Removed: (Debt * 1e18) / Index
-        expectedSharesRemoved =
-            (scaledDebt * pool.PRECISION()) /
-            pool.globalBorrowIndex();
+        expectedSharesRemoved = (scaledDebt * pool.PRECISION()) / pool.globalBorrowIndex();
     }
 
     // deposit
     function test_deposit_updatesUserBalance() public _depositUsdc {
         uint256 poolBalanceAfterDeposit = pool.totalDeposits();
 
-        (, , uint256 userDeposit) = pool.users(user);
+        (,, uint256 userDeposit) = pool.users(user);
 
         assertEq(userDeposit, INITIAL_USDC * pool.USDC_SCALE());
         assertEq(poolBalanceAfterDeposit, INITIAL_USDC * pool.USDC_SCALE());
@@ -121,7 +117,7 @@ contract AmagiPoolTest is Test {
         vm.prank(user);
         pool.withdraw(withdrawAmount);
 
-        (, , uint256 deposit) = pool.users(user);
+        (,, uint256 deposit) = pool.users(user);
         assertEq(deposit, (INITIAL_USDC - withdrawAmount) * pool.USDC_SCALE());
     }
 
@@ -138,10 +134,7 @@ contract AmagiPoolTest is Test {
         pool.withdraw(0);
     }
 
-    function test_withdraw_revertsIfInsufficientLiquidity()
-        public
-        _depositUsdc
-    {
+    function test_withdraw_revertsIfInsufficientLiquidity() public _depositUsdc {
         address borrower = liquidator;
 
         vm.deal(borrower, 10 ether);
@@ -158,7 +151,7 @@ contract AmagiPoolTest is Test {
 
     // depositCollateral
     function test_depositCollateral_updatesCollateral() public _depositEth {
-        (uint256 collateral, , ) = pool.users(user);
+        (uint256 collateral,,) = pool.users(user);
 
         assertEq(collateral, INITIAL_ETH);
         assertEq(address(pool).balance, INITIAL_ETH);
@@ -177,19 +170,13 @@ contract AmagiPoolTest is Test {
         assertEq(address(pool).balance, 8 ether);
     }
 
-    function test_withdrawCollateral_revertsIfInsufficientBalance()
-        public
-        _depositEth
-    {
+    function test_withdrawCollateral_revertsIfInsufficientBalance() public _depositEth {
         vm.prank(user);
         vm.expectRevert(InsufficientBalance.selector);
         pool.withdrawCollateral(11 ether);
     }
 
-    function test_withdrawCollateral_revertsIfHealthFactorBreaks()
-        public
-        _depositEth
-    {
+    function test_withdrawCollateral_revertsIfHealthFactorBreaks() public _depositEth {
         usdc.mint(address(pool), 20_000e6);
 
         uint256 maxBorrow = 15_000e6;
@@ -233,7 +220,7 @@ contract AmagiPoolTest is Test {
         vm.prank(user);
         pool.borrow(borrowAmount);
 
-        (, uint256 borrowShares, ) = pool.users(user);
+        (, uint256 borrowShares,) = pool.users(user);
 
         assertEq(usdc.balanceOf(user), borrowAmount);
         assertGt(borrowShares, 0);
@@ -275,7 +262,7 @@ contract AmagiPoolTest is Test {
 
         vm.prank(user);
         pool.borrow(borrowAmount);
-        (, uint256 borrowShares, ) = pool.users(user);
+        (, uint256 borrowShares,) = pool.users(user);
 
         _passTime(90 days);
 
@@ -284,7 +271,7 @@ contract AmagiPoolTest is Test {
         pool.repay(5_000e6);
         vm.stopPrank();
 
-        (, uint256 borrowSharesAfterRepay, ) = pool.users(user);
+        (, uint256 borrowSharesAfterRepay,) = pool.users(user);
 
         assertLt(borrowSharesAfterRepay, borrowShares);
     }
@@ -305,7 +292,7 @@ contract AmagiPoolTest is Test {
         pool.repay(mintAmount + borrowAmount);
         vm.stopPrank();
 
-        (, uint256 borrowSharesAfterRepay, ) = pool.users(user);
+        (, uint256 borrowSharesAfterRepay,) = pool.users(user);
 
         assertEq(usdc.balanceOf(user), mintAmount);
         assertEq(borrowSharesAfterRepay, 0);
@@ -337,20 +324,18 @@ contract AmagiPoolTest is Test {
         _setPrice(1200e8);
 
         uint256 liqBalanceBefore = liquidator.balance;
-        (, uint256 sharesBefore, ) = pool.users(user);
+        (, uint256 sharesBefore,) = pool.users(user);
 
         vm.prank(liquidator);
         pool.liquidate(user, debtToCover);
 
         uint256 scaledDebt = debtToCover * pool.USDC_SCALE();
-        uint256 expectedCollateralOut = (scaledDebt *
-            (100 + pool.LIQ_BONUS())) / ((currentPrice * 100) / 1e18);
+        uint256 expectedCollateralOut = (scaledDebt * (100 + pool.LIQ_BONUS())) / ((currentPrice * 100) / 1e18);
 
         assertEq(liquidator.balance - liqBalanceBefore, expectedCollateralOut);
-        (, uint256 sharesAfter, ) = pool.users(user);
+        (, uint256 sharesAfter,) = pool.users(user);
 
-        uint256 expectedSharesRemoved = (scaledDebt * pool.PRECISION()) /
-            pool.globalBorrowIndex();
+        uint256 expectedSharesRemoved = (scaledDebt * pool.PRECISION()) / pool.globalBorrowIndex();
         assertEq(sharesBefore - sharesAfter, expectedSharesRemoved);
     }
 
@@ -361,13 +346,13 @@ contract AmagiPoolTest is Test {
 
         _setPrice(1200e8);
 
-        (, uint256 sharesBefore, ) = pool.users(user);
+        (, uint256 sharesBefore,) = pool.users(user);
         (, uint256 expectedShares) = _setupLiquidate(debtToCover, 1200e18);
 
         vm.prank(liquidator);
         pool.liquidate(user, debtToCover);
 
-        (, uint256 sharesAfter, ) = pool.users(user);
+        (, uint256 sharesAfter,) = pool.users(user);
         assertEq(sharesBefore - sharesAfter, expectedShares);
     }
 
@@ -378,7 +363,7 @@ contract AmagiPoolTest is Test {
         vm.prank(liquidator);
         pool.liquidate(user, 5_000e6);
 
-        (, uint256 sharesAfter, ) = pool.users(user);
+        (, uint256 sharesAfter,) = pool.users(user);
         assertGt(sharesAfter, 0);
     }
 
@@ -393,10 +378,7 @@ contract AmagiPoolTest is Test {
         vm.prank(liquidator);
         pool.liquidate(user, 100_000e6);
 
-        assertEq(
-            usdc.balanceOf(liquidator),
-            liquidatorBalanceBefore - currentDebt
-        );
+        assertEq(usdc.balanceOf(liquidator), liquidatorBalanceBefore - currentDebt);
     }
 
     function test_liquidate_capsAtAvailableCollateral() public {
@@ -409,13 +391,9 @@ contract AmagiPoolTest is Test {
         vm.prank(liquidator);
         pool.liquidate(user, 1600e6);
 
-        assertEq(
-            liquidator.balance - liqBalanceBefore,
-            1.5 ether,
-            "Liquidator should be capped at 1.5 ETH"
-        );
+        assertEq(liquidator.balance - liqBalanceBefore, 1.5 ether, "Liquidator should be capped at 1.5 ETH");
 
-        (uint256 collateral, , ) = pool.users(user);
+        (uint256 collateral,,) = pool.users(user);
         assertEq(collateral, 0, "User should have 0 collateral left");
     }
 
@@ -430,16 +408,14 @@ contract AmagiPoolTest is Test {
         _setupBorrowPosition(user, 10 ether, 10_000e6);
         uint256 principal = 10_000e6 * pool.USDC_SCALE();
 
-        (, uint256 shares, ) = pool.users(user);
+        (, uint256 shares,) = pool.users(user);
 
         uint256 timePassed = 365 days;
         uint256 indexAtStart = pool.globalBorrowIndex();
 
         _passTime(timePassed);
 
-        uint256 expectedIndex = indexAtStart +
-            (indexAtStart * pool.INTEREST_RATE() * timePassed) /
-            (100 * 365 days);
+        uint256 expectedIndex = indexAtStart + (indexAtStart * pool.INTEREST_RATE() * timePassed) / (100 * 365 days);
 
         uint256 expectedDebt = (shares * expectedIndex) / pool.PRECISION();
 
@@ -450,9 +426,8 @@ contract AmagiPoolTest is Test {
         _setupBorrowPosition(user, 10 ether, 10_000e6);
         uint256 principal = 10_000e6 * pool.USDC_SCALE();
 
-        (, uint256 shares, ) = pool.users(user);
-        uint256 expectedDebt = (shares * pool.globalBorrowIndex()) /
-            pool.PRECISION();
+        (, uint256 shares,) = pool.users(user);
+        uint256 expectedDebt = (shares * pool.globalBorrowIndex()) / pool.PRECISION();
 
         assertEq(principal, expectedDebt);
     }
@@ -485,30 +460,22 @@ contract AmagiPoolTest is Test {
         MockPriceFeed highDecPriceFeed = new MockPriceFeed(2000 * 1e20);
         highDecPriceFeed.setDecimals(20);
 
-        bytes memory data = abi.encodeWithSelector(
-            AmagiPool.initialize.selector,
-            address(usdc),
-            address(highDecPriceFeed)
-        );
+        bytes memory data =
+            abi.encodeWithSelector(AmagiPool.initialize.selector, address(usdc), address(highDecPriceFeed));
         AmagiPool impl = new AmagiPool();
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), data);
         AmagiPool highDecPool = AmagiPool(payable(address(proxy)));
         uint256 normalizedPrice = highDecPool.getPrice();
 
-        assertEq(
-            normalizedPrice,
-            2000e18,
-            "Normalization from 20 decimals failed"
-        );
+        assertEq(normalizedPrice, 2000e18, "Normalization from 20 decimals failed");
 
         vm.deal(user, 1 ether);
 
         vm.prank(user);
         highDecPool.depositCollateral{value: 1 ether}();
 
-        (uint256 collateral, , ) = highDecPool.users(user);
-        uint256 collateralValue = (collateral * normalizedPrice) /
-            highDecPool.PRECISION();
+        (uint256 collateral,,) = highDecPool.users(user);
+        uint256 collateralValue = (collateral * normalizedPrice) / highDecPool.PRECISION();
 
         assertEq(collateralValue, 2000e18);
     }

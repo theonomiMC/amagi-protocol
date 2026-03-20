@@ -83,6 +83,7 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
     function getPrice() public view returns (uint256) {
         return _price();
     }
+
     /// @notice Deposits usdc into the pool to earn interest
     /// @dev Uses SafeERC20 for transfer and scales amount to 18 decimals
     /// @param amount The amount of usdc to deposit (6 decimals)
@@ -179,7 +180,7 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         uint256 scaledAmount = amount * USDC_SCALE;
 
         uint256 maxBorrow = (collateralValue * LTV) / 100;
-      
+
         if (debt + scaledAmount > maxBorrow) revert InsufficientCollateral();
 
         // shares = amount * PRECISION / globalBorrowIndex
