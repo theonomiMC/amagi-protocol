@@ -27,8 +27,9 @@ contract AmagiInvariants is BaseTest {
 
     // Invariant 1: Solvency
     function invariant_solvency() public view {
-        uint256 totalPlus = handler.ghost_totalDeposits() + handler.ghost_totalRepaid()
-            + handler.ghost_totalLiquidated();
+        uint256 totalPlus = 
+        handler.ghost_totalDeposits() + handler.ghost_totalRepaid()
+        + handler.ghost_totalLiquidated();
 
         uint256 totalMinus = handler.ghost_totalBorrowed();
 
