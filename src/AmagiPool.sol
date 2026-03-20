@@ -37,7 +37,7 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
     uint256 public constant USDC_SCALE = 10 ** 12;
 
     uint256 public constant LTV = 75;
-    uint256 public constant LIQ_THRESHOLD = 85;
+    uint256 public constant LIQ_THRESHOLD = 80;
     uint256 public constant LIQ_BONUS = 5;
     uint256 public constant INTEREST_RATE = 10;
 
