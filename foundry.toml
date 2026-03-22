@@ -4,11 +4,18 @@ out = "out"
 libs = ["lib"]
 remappings = [
     "@chainlink/=lib/chainlink-brownie-contracts/contracts/src/v0.8/",
-    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/"
 ]
 
 [invariant]
 runs = 512
 depth = 128
 fail_on_revert = false
+
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
 

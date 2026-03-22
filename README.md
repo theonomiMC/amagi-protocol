@@ -110,7 +110,14 @@ forge coverage --report lcov
 
 ## Deployments
 
-*Sepolia testnet deployment coming in V2.*
+## Deployments (Sepolia)
+
+| Contract        | Address                                      |
+|-----------------|----------------------------------------------|
+| Implementation  | 0xdA5402E05Ffaef6A4F07b434b4454eb413533b8F   |
+| Proxy           | 0xfA7f34169E182737fa06abAC901E361b42b445A4   |
+
+Always interact with the Proxy address.
 
 ---
 

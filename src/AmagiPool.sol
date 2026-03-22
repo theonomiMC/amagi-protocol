@@ -11,59 +11,104 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 // custom errrors
+/// @notice Thrown when a zero amount is passed to a function
 error ZeroAmount();
+/// @notice Thrown when the user does not have enough balance to complete the operation
 error InsufficientBalance();
+/// @notice Thrown when collateral is insufficient to cover the borrow or withdrawal
 error InsufficientCollateral();
+/// @notice Thrown when a withdrawal or borrow would leave the position undercollateralized
 error InvalidHealthFactor();
+/// @notice Thrown when trying to liquidate a healthy position
 error HealthFactorOk();
+/// @notice Thrown when collateral is insufficient to cover the borrow or withdrawal
 error InsufficientLiquidity();
+/// @notice Thrown when a native ETH transfer fails
 error TransferFailed();
+/// @notice Thrown when the Chainlink oracle returns a zero or negative price
 error InvalidPrice();
+/// @notice Thrown when the Chainlink oracle price is older than 24 hours
 error PriceExpired();
 
-/// @title Lending protocol
-/// @author Natalia - theonomiMC
-/// @notice
-contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUpgradeable {
+/// @title AmagiPool - ETH collateral lending protocol
+/// @author theonomiMC
+/// @notice Users deposit ETH, borrow USDC against it
+/// @dev UUPS upgradeable, uses Chainlink oracle + share-based debt model
+contract AmagiPool is
+    ReentrancyGuard,
+    Initializable,
+    OwnableUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
 
+    /// @notice The USDC token used for deposits and borrows
     IERC20 public usdc;
+
+    /// @notice Chainlink price feed for ETH/USD
     AggregatorV3Interface public priceFeed;
+    /// @notice Decimal precision of the Chainlink price feed
     uint8 public priceFeedDecimals;
 
+    /// @notice Total USDC deposited in the pool (scaled to 18 decimals)
     uint256 public totalDeposits;
+    /// @notice Base precision unit used for share and price calculations
     uint256 public constant PRECISION = 1e18;
+    /// @notice Scaling factor to convert USDC (6 decimals) to 18 decimals
     uint256 public constant USDC_SCALE = 10 ** 12;
 
+    /// @notice Loan-to-value ratio — max borrow is 75% of collateral value
     uint256 public constant LTV = 75;
+    /// @notice Liquidation threshold — position is liquidatable below 80% collateral ratio
     uint256 public constant LIQ_THRESHOLD = 80;
+    /// @notice Liquidation bonus — liquidator receives 5% extra collateral
     uint256 public constant LIQ_BONUS = 5;
+    /// @notice Annual interest rate in percent (10 = 10% APR)
     uint256 public constant INTEREST_RATE = 10;
 
+    /// @notice Global borrow index — tracks accumulated interest over time (scaled to 1e18)
     uint256 public globalBorrowIndex;
+    /// @notice Timestamp of the last borrow index update
     uint256 public lastUpdatedIndex;
 
+    /// @notice Per-user accounting data packed into two storage slots
+    /// @dev collateral and borrowShares share Slot 1; deposit occupies Slot 2
     struct UserData {
-        uint128 collateral; //  Slot 1
-        uint128 borrowShares; // Slot 1
-        uint256 deposit; // Slot 2
+        uint128 collateral;
+        uint128 borrowShares;
+        uint256 deposit;
     }
+    /// @notice Maps each user address to their pool position
     mapping(address => UserData) public users;
 
+    /// @notice Maps each user address to their pool position
     event Deposit(address indexed user, uint256 amount);
+    /// @notice Emitted when a user deposits ETH as collateral
     event CollateralDeposited(address indexed user, uint256 amount);
+    /// @notice Emitted when a user withdraws USDC from the pool
     event Withdraw(address indexed user, uint256 amount);
+     /// @notice Emitted when a user withdraws ETH collateral
     event WithdrawCollateral(address indexed user, uint256 amount);
+    /// @notice Emitted when a user borrows USDC against their collateral
     event Borrow(address indexed user, uint256 amount);
+    /// @notice Emitted when a user repays their USDC debt
     event Repay(address indexed user, uint256 amount);
-    event Liquidate(address indexed user, address indexed liquidator, uint256 amount);
+    /// @notice Emitted when a position is liquidated
+    event Liquidate(
+        address indexed user,
+        address indexed liquidator,
+        uint256 amount
+    );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
-
+    // @notice Initializes the pool with USDC token and Chainlink price feed
+    /// @dev Called once by the proxy on deployment; replaces the constructor
+    /// @param _usdc Address of the USDC ERC20 token
+    /// @param _priceFeed Address of the Chainlink ETH/USD price feed
     function initialize(address _usdc, address _priceFeed) public initializer {
         __Ownable_init(msg.sender);
 
@@ -74,8 +119,12 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         globalBorrowIndex = 1e18;
         lastUpdatedIndex = block.timestamp;
     }
-
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    /// @notice Restricts UUPS upgrade authorization to the contract owner
+    /// @dev Required override for UUPSUpgradeable; reverts if caller is not owner
+    /// @param newImplementation Address of the new implementation contract
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 
     /// @notice Gets the normalized price of the asset from the oracle
     /// @dev Scales the price to 18 decimals regardless of the original feed decimals
@@ -103,7 +152,7 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
     }
 
     /// @notice Deposits ETH as collateral for borrowing
-    /// @dev Increases the user's collateral balance by msg.value
+    /// @dev msg.value is used directly; no amount parameter needed
     function depositCollateral() external payable {
         if (msg.value == 0) revert ZeroAmount();
 
@@ -112,9 +161,9 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         emit CollateralDeposited(msg.sender, msg.value);
     }
 
-    /// @notice Withdraws usdc from the pool
-    /// @dev Reverts if there is insufficient liquidity in the contract or user balance
-    /// @param amount The amount of usdc to withdraw (6 decimals)
+    /// @notice Withdraws USDC from the pool
+    /// @dev Reverts if the user has insufficient balance or the pool lacks liquidity
+    /// @param amount The amount of USDC to withdraw (6 decimals)
     function withdraw(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
         UserData storage user = users[msg.sender];
@@ -136,8 +185,8 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
     }
 
     /// @notice Withdraws ETH collateral from the protocol
-    /// @dev Updates the borrow index and checks if the withdrawal keeps the position healthy
-    /// @param amount The amount of ETH (in wei) to withdraw
+    /// @dev Accrues interest via _updateIndex before checking the resulting health factor
+    /// @param amount The amount of ETH to withdraw (in wei)
     function withdrawCollateral(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
 
@@ -158,15 +207,15 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
             revert InvalidHealthFactor();
         }
 
-        (bool success,) = msg.sender.call{value: amount}("");
+        (bool success, ) = msg.sender.call{value: amount}("");
         if (!success) revert TransferFailed();
 
         emit WithdrawCollateral(msg.sender, amount);
     }
 
-    /// @notice Allows users to borrow usdc against their ETH collateral
-    /// @dev Calculates health factor before transferring funds
-    /// @param amount The amount of usdc to borrow
+    /// @notice Borrows USDC against the caller's ETH collateral
+    /// @dev Accrues interest and checks LTV before issuing debt shares
+    /// @param amount The amount of USDC to borrow (6 decimals)
     function borrow(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
 
@@ -196,9 +245,9 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         emit Borrow(msg.sender, amount);
     }
 
-    /// @notice Repays a usdc loan to reduce debt shares
-    /// @dev If the amount exceeds the total debt, it caps the repayment at the current debt
-    /// @param amount The amount of usdc to repay
+     /// @notice Repays USDC debt to reduce the caller's borrow shares
+    /// @dev If amount exceeds total debt, repayment is capped at current debt
+    /// @param amount The amount of USDC to repay (6 decimals)
     function repay(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
 
@@ -223,11 +272,14 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         emit Repay(msg.sender, amount);
     }
 
-    /// @notice Liquidates an undercollateralized position
-    /// @dev Liquidator pays debt and receives collateral + bonus
+   /// @notice Liquidates an undercollateralized position
+    /// @dev Liquidator covers part or all of the debt and receives collateral plus a bonus
     /// @param target The address of the user to be liquidated
-    /// @param debtToCover The amount of debt the liquidator wants to pay
-    function liquidate(address target, uint256 debtToCover) external nonReentrant {
+    /// @param debtToCover The amount of USDC debt the liquidator wants to cover (6 decimals)
+    function liquidate(
+        address target,
+        uint256 debtToCover
+    ) external nonReentrant {
         if (debtToCover == 0) revert ZeroAmount();
 
         uint256 index = _updateIndex();
@@ -243,7 +295,8 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         uint256 scaledAmount = debtToCover * USDC_SCALE;
         if (scaledAmount > debt) scaledAmount = debt;
 
-        uint256 collateralOut = (scaledAmount * PRECISION * (100 + LIQ_BONUS)) / (price * 100);
+        uint256 collateralOut = (scaledAmount * PRECISION * (100 + LIQ_BONUS)) /
+            (price * 100);
 
         if (collateralOut > user.collateral) collateralOut = user.collateral;
 
@@ -257,14 +310,15 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         uint256 actualDebtToCover = scaledAmount / USDC_SCALE;
         usdc.safeTransferFrom(msg.sender, address(this), actualDebtToCover);
 
-        (bool success,) = msg.sender.call{value: collateralOut}("");
+        (bool success, ) = msg.sender.call{value: collateralOut}("");
         if (!success) revert TransferFailed();
 
         emit Liquidate(target, msg.sender, collateralOut);
     }
 
-    /// @dev Updates the global borrow index based on the interest rate and time elapsed
-    /// @notice Accrues interest to the entire pool by increasing the global index
+    /// @notice Accrues interest to the pool by increasing the global borrow index
+    /// @dev Interest is linear: index += index * INTEREST_RATE * timeElapsed / (100 * 365 days)
+    /// @return index The updated global borrow index
     function _updateIndex() internal returns (uint256) {
         uint256 index = globalBorrowIndex; // SLOAD
         uint256 lastUpdated = lastUpdatedIndex; // SLOAD
@@ -279,18 +333,18 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         return index;
     }
 
-    /// @dev Fetches and normalizes the asset price from the Chainlink Oracle
-    /// @notice Normalizes prices with different decimals to a standard 18-decimal format
+    /// @notice Returns the current ETH/USD price from Chainlink, normalized to 18 decimals
+    /// @dev Reverts if price is stale (>24h) or non-positive
     /// @return The normalized price in 1e18 format
     function _price() internal view returns (uint256) {
-        (, int256 p,, uint256 updatedAt,) = priceFeed.latestRoundData();
+        (, int256 p, , uint256 updatedAt, ) = priceFeed.latestRoundData();
 
         uint8 decimals = priceFeedDecimals;
 
         if (p <= 0) revert InvalidPrice();
         if (block.timestamp - updatedAt > 24 hours) revert PriceExpired();
 
-        // casting to 'uint256' is safe because [explain why]
+        // casting to 'uint256' is safe because p > 0 is checked above (if p <= 0 revert)
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 price = uint256(p);
 
@@ -303,20 +357,26 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         return price;
     }
 
-    /// @dev Determines if a position's health factor is below the liquidation threshold
-    /// @notice A position is liquidatable if its Health Factor is less than 1 (represented by PRECISION)
-    /// @param collateralValue The total value of user's ETH in USD (18 decimals)
-    /// @param debt The total value of user's debt in USD (18 decimals)
+    /// @notice Returns true if a position's health factor is below the liquidation threshold
+    /// @dev Health factor = (collateralValue * LIQ_THRESHOLD * PRECISION) / (100 * debt)
+    ///      Position is liquidatable when hf < PRECISION (i.e. health factor < 1)
+    /// @param collateralValue Total ETH collateral value in USD (18 decimals)
+    /// @param debt Total outstanding debt in USD (18 decimals)
     /// @return True if the position can be liquidated, false otherwise
-    function _isLiquidatable(uint256 collateralValue, uint256 debt) internal pure returns (bool) {
+    function _isLiquidatable(
+        uint256 collateralValue,
+        uint256 debt
+    ) internal pure returns (bool) {
         if (debt == 0) return false;
 
-        uint256 hf = (collateralValue * LIQ_THRESHOLD * PRECISION) / (100 * debt);
+        uint256 hf = (collateralValue * LIQ_THRESHOLD * PRECISION) /
+            (100 * debt);
 
         return hf < PRECISION;
     }
-
+    /// @notice Allows the contract to receive plain ETH transfers
     receive() external payable {}
 
+    /// @dev Storage gap for future upgrades — preserves storage layout across versions
     uint256[50] private __gap;
 }
