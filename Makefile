@@ -1,7 +1,7 @@
 -include .env
 
 LOCAL_RPC  = http://127.0.0.1:8545
-DEPLOY_SCRIPT = script/DeployV1.s.sol:DeployV1
+DEPLOY_SCRIPT = script/DeployV2.s.sol:DeployV2
 
 deploy-local:
 	forge script $(DEPLOY_SCRIPT) \

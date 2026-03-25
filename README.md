@@ -1,133 +1,44 @@
-<!-- ![CI](https://github.com/theonomiMC/amagi-protocol/actions/workflows/CI.yml/badge.svg) -->
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Foundry](https://img.shields.io/badge/Built%20with-Foundry-FFDE00.svg)
-![Coverage](https://img.shields.io/badge/Coverage-98%25-brightgreen.svg)
+# Amagi Protocol V2 - Smart Contract Upgrade
 
-# Amagi Protocol
+This branch contains the **V2 Upgrade** of the Amagi Lending Protocol. The core focus of this version is the transition to a debt-based model, integration of an Interest Rate Mechanism (IRM), and a robust security testing suite.
 
-A lending protocol where users deposit ETH as collateral to borrow USDC, or provide USDC liquidity to earn interest. Built as a learning project to understand how DeFi lending works under the hood — collateral math, liquidations, interest accrual, and invariant testing.
+## 🚀 Key Features in V2
+- **Debt Model:** Users can now borrow USDC against their ETH collateral.
+- **Dynamic Interest Rates:** Implemented a "Kinked" Interest Rate Model (IRM) based on pool utilization.
+- **UUPS Upgradeability:** Protocol logic is upgradeable via the `UUPSUpgradeable` pattern.
+- **Liquidation Engine:** Automated health factor calculations and liquidation incentives.
 
----
+## 🛡️ Testing Suite
 
-## ⚙️ How it works
+The protocol has been rigorously tested using a multi-layered approach:
 
-Depositors put USDC in, making it available for borrowers. Borrowers lock ETH as collateral and take out USDC loans. If a borrower's health factor drops below 1, anyone can liquidate their position.
+### 1. Unit Testing
+Located in `test/`, these tests cover specific function logic, edge cases, and access control.
+- **Coverage:** Focus on new V2 functions (`borrow`, `repay`, `liquidate`).
+- **Command:** `forge test --match-path test/*`
 
-- **75% LTV** — borrow up to 75% of your ETH collateral value
-- **10% APR** — interest accrues continuously via a global borrow index
-- **80% liquidation threshold** — positions become liquidatable below this
-- **5% liquidation bonus** — incentive for liquidators
+### 2. Invariant Testing (Fuzzing)
+Located in `test/invariants/`, these tests ensure that the protocol's core properties hold true under any sequence of random transactions.
+- **Handler-based Fuzzing:** A dedicated `HandlerV2.t.sol` manages actor interactions and state.
+- **Key Invariants:**
+    - `invariant_solvency`: Total Assets >= Total Liabilities.
+    - `invariant_TotalDebtConsistency`: Sum of individual user shares == Total borrow shares.
+    - `invariant_depositorBalances`: Depositors' assets remain protected and accrue interest.
+- **Command:** `forge test --match-path test/invariants/*`
 
-The protocol uses a share-based debt model. When you borrow, you receive debt shares rather than a fixed amount. As the global index grows over time, your shares represent more USDC owed — no per-user tracking needed.
+## 📊 Coverage Report
+The current testing suite achieves high branch coverage for the core logic:
 
----
+| File | % Lines | % Branches | % Funcs |
+| :--- | :--- | :--- | :--- |
+| **src/AmagiPoolV2.sol** | **97.69%** | **89.74%** | **100.00%** |
+| **test/invariants/HandlerV2.t.sol** | **92.98%** | **100.00%** | **85.71%** |
 
-## 🏗️ Architecture
-```
-AmagiPool.sol (UUPS Upgradeable)
-├── deposit() / withdraw()           — USDC liquidity
-├── depositCollateral() / withdrawCollateral() — ETH collateral
-├── borrow() / repay()               — loan management
-├── liquidate()                      — position liquidation
-└── _updateIndex()                   — interest accrual
-```
-
-Chainlink ETH/USD oracle provides the price feed with staleness checks.
-
----
-
-## 🔒 Security
-
-- UUPS upgradeable proxy (OpenZeppelin)
-- ReentrancyGuard on all state-changing functions
-- SafeERC20 for token transfers
-- Chainlink oracle with 24h staleness check
-- SafeCast for uint256 → uint128 conversions
+## ⚙️ Deployment & Upgrade
+The upgrade is managed via `DeployV2.s.sol`, which performs the following:
+1. Deploys the new implementation.
+2. Calls `upgradeToAndCall` on the existing Proxy.
+3. Triggers `initializeV2()` to set IRM parameters.
 
 ---
-
-## 🧪 Testing
-
-Three layers of tests:
-
-**Unit tests** — one function at a time, covering happy paths, reverts, and edge cases.
-
-**Invariant tests** — stateful fuzzer runs random sequences of deposit, borrow, repay, liquidate, and price changes. Four invariants checked after every call:
-```
-solvency:           pool balance >= net deposits - borrowed + repaid
-noBadDebt:          healthy positions always have collateral >= debt  
-healthFactorValid:  all borrowers maintain hf >= 1
-indexMonotonicity:  global borrow index never decreases
-```
-
-Passed **65,536 calls** across **512 sequences** with **0 violations**.
-
-**Coverage** (measured on `src/` only):
-
-| Metric     | Rate   |
-|------------|--------|
-| Lines      | 98.36% |
-| Statements | 98.79% |
-| Branches   | 92.31% |
-| Functions  | 92.86% |
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-Install [Foundry](https://book.getfoundry.sh/getting-started/installation).
-
-### Installation
-```bash
-git clone https://github.com/theonomiMC/amagi-protocol.git
-cd amagi-protocol
-forge install
-```
-
-### Running tests
-```bash
-# unit tests
-forge test
-
-# invariant suite
-forge test --match-contract AmagiInvariants
-
-# coverage
-forge coverage --report lcov
-```
-
----
-
-## Dependencies
-
-- OpenZeppelin Contracts v5 (+ Upgradeable)
-- Chainlink Brownie Contracts
-- Foundry
-
----
-
-## Deployments
-
-## Deployments (Sepolia)
-
-| Contract        | Address                                      |
-|-----------------|----------------------------------------------|
-| Implementation  | 0xdA5402E05Ffaef6A4F07b434b4454eb413533b8F   |
-| Proxy           | 0xfA7f34169E182737fa06abAC901E361b42b445A4   |
-
-Always interact with the Proxy address.
-
----
-
-## Roadmap
-
-- ✅ Core lending/borrowing with ETH collateral
-- ✅ Share-based debt model with global interest index
-- ✅ Partial liquidations
-- ✅ UUPS upgradeability
-- ✅ Invariant test suite
-- ⬜ Interest Rate Model (utilization-based)
-- ⬜ Sepolia deployment
-- ⬜ Multi-collateral support
+*Developed as part of the Amagi Protocol security-first development cycle.*

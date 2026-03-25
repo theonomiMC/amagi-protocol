@@ -30,7 +30,7 @@ contract AmagiPoolTest is Test {
     uint256 constant INITIAL_USDC = 1000e6; // 1000 USDC
     uint256 constant INITIAL_ETH = 10 ether;
 
-    function setUp() public {
+    function setUp() public virtual {
         // deploy pool
         usdc = new MockUSDC();
         price = new MockPriceFeed(2000e8);
