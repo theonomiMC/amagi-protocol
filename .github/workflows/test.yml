@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
           submodules: recursive
@@ -27,6 +27,9 @@ jobs:
 
       - name: Show Forge version
         run: forge --version
+
+      - name: Install Dependencies
+        run: forge install
 
       - name: Run Forge build
         run: forge build --sizes
