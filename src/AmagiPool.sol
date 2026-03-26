@@ -214,11 +214,10 @@ contract AmagiPool is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUp
         UserData storage user = users[msg.sender];
         uint256 price = _price();
 
-        uint256 collateralValue = (user.collateral * price) / PRECISION;
         uint256 debt = (user.borrowShares * index) / PRECISION;
         uint256 scaledAmount = amount * USDC_SCALE;
 
-        uint256 maxBorrow = (collateralValue * LTV) / 100;
+        uint256 maxBorrow = (user.collateral * price * LTV) / (100 * PRECISION);
 
         if (debt + scaledAmount > maxBorrow) revert InsufficientCollateral();
 
