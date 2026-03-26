@@ -2,13 +2,19 @@
 
 This branch contains the **V2 Upgrade** of the Amagi Lending Protocol. The core focus of this version is the transition to a debt-based model, integration of an Interest Rate Mechanism (IRM), and a robust security testing suite.
 
+## 🔗 Contract Addresses (Sepolia)
+
+- **Proxy (Entry Point):** `0xfA7f34169E182737fa06abAC901E361b42b445A4`
+- **Implementation (V2):** `0xfA7f34169E182737fa06abAC901E361b42b445A4`
+- **Underlying Asset (USDC):** `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`
+
 ## 🔧 Quick Start
 
-```
+```bash
 git clone https://github.com/theonomiMC/amagi-protocol.git
+cd amagi-protocol
 forge install
 forge test
-forge coverage
 ```
 
 ## 🚀 Key Features in V2
@@ -44,18 +50,18 @@ Located in `test/invariants/`, these tests ensure that the protocol's core prope
 
 The current testing suite achieves high branch coverage for the core logic:
 
-| File                                | % Lines    | % Branches  | % Funcs     |
-| :---------------------------------- | :--------- | :---------- | :---------- |
-| **src/AmagiPoolV2.sol**             | **98.28%** | **89.74%**  | **100.00%** |
+| File                                | % Lines    | % Branches | % Funcs     |
+| :---------------------------------- | :--------- | :--------- | :---------- |
+| **src/AmagiPoolV2.sol**             | **98.28%** | **89.74%** | **100.00%** |
 | **test/invariants/HandlerV2.t.sol** | **92.98%** | **91.67%** | **85.71%**  |
 
 ## ⚙️ Deployment & Upgrade
 
-The upgrade is managed via `DeployV2.s.sol`, which performs the following:
+The upgrade was managed via `DeployV2.s.sol`, which performed the following:
 
-1. Deploys the new implementation.
-2. Calls `upgradeToAndCall` on the existing Proxy.
-3. Triggers `initializeV2()` to set IRM parameters.
+1. Deployed the new `AmagiPoolV2` implementation.
+2. Executed `upgradeToAndCall` on the existing Proxy.
+3. Triggered `initializeV2()` to set IRM parameters (Base Rate: 2%, Optimal Util: 80%).
 
 ---
 
