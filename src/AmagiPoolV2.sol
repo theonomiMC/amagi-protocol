@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {AggregatorV3Interface} from "@chainlink/interfaces/AggregatorV3Interface.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -395,10 +396,10 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         uint256 utilization = getUtilization();
         uint256 borrowRate = getBorrowRate(utilization);
 
-        bIndex += (bIndex * borrowRate * timeElapsed) / (PRECISION * 365 days);
+        bIndex += Math.mulDiv(bIndex, borrowRate * timeElapsed, PRECISION * 365 days);
 
         uint256 depositRate = (borrowRate * utilization) / PRECISION;
-        dIndex += (dIndex * depositRate * timeElapsed) / (PRECISION * 365 days);
+        dIndex += Math.mulDiv(dIndex, depositRate * timeElapsed, PRECISION * 365 days);
 
         // update SSTOR
         globalBorrowIndex = bIndex;
