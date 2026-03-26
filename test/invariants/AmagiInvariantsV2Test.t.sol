@@ -14,10 +14,7 @@ contract AmagiInvariantsV2Test is BaseTest {
 
         vm.startPrank(owner);
         AmagiPoolV2 newLogic = new AmagiPoolV2();
-        pool.upgradeToAndCall(
-            address(newLogic),
-            abi.encodeWithSelector(AmagiPoolV2.initializeV2.selector)
-        );
+        pool.upgradeToAndCall(address(newLogic), abi.encodeWithSelector(AmagiPoolV2.initializeV2.selector));
         vm.stopPrank();
 
         poolV2 = AmagiPoolV2(payable(address(pool)));
@@ -28,25 +25,17 @@ contract AmagiInvariantsV2Test is BaseTest {
 
     // Invariant 1: Solvency
     function invariant_solvency() public view {
-        uint256 totalAssets = usdc.balanceOf(address(poolV2)) *
-            poolV2.USDC_SCALE() +
-            ((poolV2.totalBorrowShares() * poolV2.globalBorrowIndex()) / 1e18);
+        uint256 totalAssets = usdc.balanceOf(address(poolV2)) * poolV2.USDC_SCALE()
+            + ((poolV2.totalBorrowShares() * poolV2.globalBorrowIndex()) / 1e18);
 
-        uint256 totalLiabilities = (poolV2.totalDeposits() *
-            poolV2.globalDepositIndex()) / 1e18;
+        uint256 totalLiabilities = (poolV2.totalDeposits() * poolV2.globalDepositIndex()) / 1e18;
 
-        assertApproxEqAbs(
-            totalAssets,
-            totalLiabilities,
-            1e10,
-            "Protocol is insolvent"
-        );
+        assertApproxEqAbs(totalAssets, totalLiabilities, 1e10, "Protocol is insolvent");
     }
 
     function invariant_depositorBalances() public view {
         uint256 expectedAssets = handler.getCurrentDeposits();
-        uint256 actualAssets = (poolV2.totalDeposits() *
-            poolV2.globalDepositIndex()) / 1e18;
+        uint256 actualAssets = (poolV2.totalDeposits() * poolV2.globalDepositIndex()) / 1e18;
         assertLe(expectedAssets * poolV2.USDC_SCALE(), actualAssets);
     }
 

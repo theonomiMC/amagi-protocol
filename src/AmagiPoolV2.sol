@@ -31,12 +31,7 @@ error InvalidPrice();
 /// @notice Thrown when the Chainlink oracle price is older than 24 hours
 error PriceExpired();
 
-contract AmagiPoolV2 is
-    ReentrancyGuard,
-    Initializable,
-    OwnableUpgradeable,
-    UUPSUpgradeable
-{
+contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
 
@@ -91,11 +86,7 @@ contract AmagiPoolV2 is
     /// @notice Emitted when a user repays their USDC debt
     event Repay(address indexed user, uint256 amount);
     /// @notice Emitted when a position is liquidated
-    event Liquidate(
-        address indexed user,
-        address indexed liquidator,
-        uint256 amount
-    );
+    event Liquidate(address indexed user, address indexed liquidator, uint256 amount);
 
     // V2 states
     /// @notice paused status. by default is false (V2 variable)
@@ -126,16 +117,12 @@ contract AmagiPoolV2 is
         paused = false;
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
-    function setIrmParams(
-        uint256 _baseRate,
-        uint256 _slope1,
-        uint256 _slope2,
-        uint256 _optimalUtil
-    ) external onlyOwner {
+    function setIrmParams(uint256 _baseRate, uint256 _slope1, uint256 _slope2, uint256 _optimalUtil)
+        external
+        onlyOwner
+    {
         BASE_RATE = _baseRate;
         SLOPE1 = _slope1;
         SLOPE2 = _slope2;
@@ -162,12 +149,7 @@ contract AmagiPoolV2 is
         if (utilization <= OPTIMAL_UTIL) {
             rate = BASE_RATE + (SLOPE1 * utilization) / PRECISION;
         } else {
-            rate =
-                BASE_RATE +
-                (SLOPE1 * OPTIMAL_UTIL) /
-                PRECISION +
-                (SLOPE2 * (utilization - OPTIMAL_UTIL)) /
-                PRECISION;
+            rate = BASE_RATE + (SLOPE1 * OPTIMAL_UTIL) / PRECISION + (SLOPE2 * (utilization - OPTIMAL_UTIL)) / PRECISION;
         }
         return rate;
     }
@@ -254,7 +236,7 @@ contract AmagiPoolV2 is
         if (paused) revert ProtocolPaused();
         if (amount == 0) revert ZeroAmount();
 
-        (uint256 bIndex, ) = _updateIndex();
+        (uint256 bIndex,) = _updateIndex();
         UserData storage user = users[msg.sender];
 
         if (user.collateral < amount) revert InsufficientBalance();
@@ -271,7 +253,7 @@ contract AmagiPoolV2 is
             revert InvalidHealthFactor();
         }
 
-        (bool success, ) = msg.sender.call{value: amount}("");
+        (bool success,) = msg.sender.call{value: amount}("");
         if (!success) revert TransferFailed();
 
         emit WithdrawCollateral(msg.sender, amount);
@@ -284,7 +266,7 @@ contract AmagiPoolV2 is
         if (paused) revert ProtocolPaused();
         if (amount == 0) revert ZeroAmount();
 
-        (uint256 bIndex, ) = _updateIndex();
+        (uint256 bIndex,) = _updateIndex();
 
         UserData storage user = users[msg.sender];
         uint256 price = _price();
@@ -318,12 +300,12 @@ contract AmagiPoolV2 is
         if (paused) revert ProtocolPaused();
         if (amount == 0) revert ZeroAmount();
 
-        (uint256 bIndex, ) = _updateIndex();
+        (uint256 bIndex,) = _updateIndex();
 
         UserData storage user = users[msg.sender];
         uint256 debt = _toAssets(user.borrowShares, bIndex);
         if (debt == 0) revert ZeroAmount();
-        
+
         uint256 scaledAmount = amount * USDC_SCALE;
 
         if (scaledAmount > debt) {
@@ -346,14 +328,11 @@ contract AmagiPoolV2 is
     /// @dev Liquidator covers part or all of the debt and receives collateral plus a bonus
     /// @param target The address of the user to be liquidated
     /// @param debtToCover The amount of USDC debt the liquidator wants to cover (6 decimals)
-    function liquidate(
-        address target,
-        uint256 debtToCover
-    ) external nonReentrant {
+    function liquidate(address target, uint256 debtToCover) external nonReentrant {
         if (paused) revert ProtocolPaused();
         if (debtToCover == 0) revert ZeroAmount();
 
-        (uint256 bIndex, ) = _updateIndex();
+        (uint256 bIndex,) = _updateIndex();
 
         UserData storage user = users[target];
         uint256 price = _price();
@@ -366,14 +345,11 @@ contract AmagiPoolV2 is
         uint256 scaledAmount = debtToCover * USDC_SCALE;
         if (scaledAmount > debt) scaledAmount = debt;
 
-        uint256 collateralOut = (scaledAmount * PRECISION * (100 + LIQ_BONUS)) /
-            (price * 100);
+        uint256 collateralOut = (scaledAmount * PRECISION * (100 + LIQ_BONUS)) / (price * 100);
 
         if (collateralOut > user.collateral) {
             collateralOut = user.collateral;
-            scaledAmount =
-                (collateralOut * price * 100) /
-                (PRECISION * (100 + LIQ_BONUS));
+            scaledAmount = (collateralOut * price * 100) / (PRECISION * (100 + LIQ_BONUS));
         }
         uint256 shares = _toShares(scaledAmount, bIndex);
 
@@ -386,7 +362,7 @@ contract AmagiPoolV2 is
         uint256 actualDebtToCover = scaledAmount / USDC_SCALE;
         usdc.safeTransferFrom(msg.sender, address(this), actualDebtToCover);
 
-        (bool success, ) = msg.sender.call{value: collateralOut}("");
+        (bool success,) = msg.sender.call{value: collateralOut}("");
         if (!success) revert TransferFailed();
 
         emit Liquidate(target, msg.sender, collateralOut);
@@ -395,20 +371,14 @@ contract AmagiPoolV2 is
     // @notice Calculate assets to shares
     /// @param assets Amount of assets
     /// @param index Current index
-    function _toShares(
-        uint256 assets,
-        uint256 index
-    ) internal pure returns (uint256) {
+    function _toShares(uint256 assets, uint256 index) internal pure returns (uint256) {
         return (assets * PRECISION) / index;
     }
 
     /// @notice Calculate shares to assets
     /// @param shares Amount of shares
     /// @param index Current index
-    function _toAssets(
-        uint256 shares,
-        uint256 index
-    ) internal pure returns (uint256) {
+    function _toAssets(uint256 shares, uint256 index) internal pure returns (uint256) {
         return (shares * index) / PRECISION;
     }
 
@@ -442,7 +412,7 @@ contract AmagiPoolV2 is
     /// @dev Reverts if price is stale (>24h) or non-positive
     /// @return The normalized price in 1e18 format
     function _price() internal view returns (uint256) {
-        (, int256 p, , uint256 updatedAt, ) = priceFeed.latestRoundData();
+        (, int256 p,, uint256 updatedAt,) = priceFeed.latestRoundData();
 
         uint8 decimals = priceFeedDecimals;
 
@@ -468,14 +438,10 @@ contract AmagiPoolV2 is
     /// @param collateralValue Total ETH collateral value in USD (18 decimals)
     /// @param debt Total outstanding debt in USD (18 decimals)
     /// @return True if the position can be liquidated, false otherwise
-    function _isLiquidatable(
-        uint256 collateralValue,
-        uint256 debt
-    ) internal pure returns (bool) {
+    function _isLiquidatable(uint256 collateralValue, uint256 debt) internal pure returns (bool) {
         if (debt == 0) return false;
 
-        uint256 hf = (collateralValue * LIQ_THRESHOLD * PRECISION) /
-            (100 * debt);
+        uint256 hf = (collateralValue * LIQ_THRESHOLD * PRECISION) / (100 * debt);
 
         return hf < PRECISION;
     }

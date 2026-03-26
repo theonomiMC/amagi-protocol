@@ -37,10 +37,7 @@ contract HandlerV2 is Test {
         return actors[seed % actors.length];
     }
 
-    function _toAssets(
-        uint256 shares,
-        uint256 index
-    ) internal view returns (uint256) {
+    function _toAssets(uint256 shares, uint256 index) internal view returns (uint256) {
         return (shares * index) / poolV2.PRECISION();
     }
 
@@ -84,11 +81,7 @@ contract HandlerV2 is Test {
         uint256 poolLiquidity = usdc.balanceOf(address(poolV2));
         if (poolLiquidity == 0) return;
 
-        amount = bound(
-            amount,
-            0,
-            maxWithdraw > poolLiquidity ? poolLiquidity : maxWithdraw
-        );
+        amount = bound(amount, 0, maxWithdraw > poolLiquidity ? poolLiquidity : maxWithdraw);
 
         vm.prank(actor);
         poolV2.withdraw(amount);
@@ -101,7 +94,7 @@ contract HandlerV2 is Test {
 
         address actor = _getActor(seed);
 
-        (uint128 userCollateral, , ) = poolV2.users(actor);
+        (uint128 userCollateral,,) = poolV2.users(actor);
 
         if (uint256(userCollateral) == 0) return;
 
@@ -114,7 +107,7 @@ contract HandlerV2 is Test {
 
     function borrow(uint256 amount, uint256 seed) public {
         address actor = _getActor(seed);
-        (uint128 collateral, uint128 borrowShares, ) = poolV2.users(actor);
+        (uint128 collateral, uint128 borrowShares,) = poolV2.users(actor);
 
         if (collateral == 0) return;
 
@@ -128,25 +121,17 @@ contract HandlerV2 is Test {
         if (currentDebt >= maxBorrowValue) return;
 
         uint256 poolLiquidity = usdc.balanceOf(address(poolV2));
-        uint256 availableBorrowAmount = _scaleDown(
-            maxBorrowValue - currentDebt
-        );
+        uint256 availableBorrowAmount = _scaleDown(maxBorrowValue - currentDebt);
 
-        amount = bound(
-            amount,
-            0,
-            availableBorrowAmount > poolLiquidity
-                ? poolLiquidity
-                : availableBorrowAmount
-        );
+        amount = bound(amount, 0, availableBorrowAmount > poolLiquidity ? poolLiquidity : availableBorrowAmount);
 
         if (amount == 0) return;
 
-        (, uint128 sharesBefore, ) = poolV2.users(actor);
+        (, uint128 sharesBefore,) = poolV2.users(actor);
         vm.prank(actor);
         poolV2.borrow(amount);
 
-        (, uint128 sharesAfter, ) = poolV2.users(actor);
+        (, uint128 sharesAfter,) = poolV2.users(actor);
 
         ghost_userBorrowShares[actor] += (sharesAfter - sharesBefore);
 
@@ -156,7 +141,7 @@ contract HandlerV2 is Test {
     function repay(uint256 amount, uint256 seed) public {
         address actor = _getActor(seed);
 
-        (, uint128 borrowShares, ) = poolV2.users(actor);
+        (, uint128 borrowShares,) = poolV2.users(actor);
         if (borrowShares == 0) return;
 
         uint256 bIndex = poolV2.globalBorrowIndex();
@@ -167,7 +152,7 @@ contract HandlerV2 is Test {
 
         amount = bound(amount, 1e6, debtInUsdc);
 
-        (, uint128 sharesBefore, ) = poolV2.users(actor);
+        (, uint128 sharesBefore,) = poolV2.users(actor);
 
         usdc.mint(actor, amount);
 
@@ -176,7 +161,7 @@ contract HandlerV2 is Test {
         poolV2.repay(amount);
         vm.stopPrank();
 
-        (, uint128 sharesAfter, ) = poolV2.users(actor);
+        (, uint128 sharesAfter,) = poolV2.users(actor);
 
         ghost_userBorrowShares[actor] -= (sharesBefore - sharesAfter);
         totalRepaidrawnByActors += amount;
@@ -185,7 +170,7 @@ contract HandlerV2 is Test {
     function liquidate(uint256 amount, uint256 seed) public {
         address target = _getActor(seed);
 
-        (uint128 collateral, uint128 borrowShares, ) = poolV2.users(target);
+        (uint128 collateral, uint128 borrowShares,) = poolV2.users(target);
         if (borrowShares == 0) return;
 
         priceFeed.setPrice(1000e8);
@@ -194,9 +179,7 @@ contract HandlerV2 is Test {
         uint256 bIndex = poolV2.globalBorrowIndex();
         uint256 debt = _toAssets(uint256(borrowShares), bIndex);
 
-        uint256 hf = (uint256(collateral) *
-            currentPrice *
-            poolV2.LIQ_THRESHOLD()) / (100 * debt);
+        uint256 hf = (uint256(collateral) * currentPrice * poolV2.LIQ_THRESHOLD()) / (100 * debt);
 
         if (hf > 1e18 || debt == 0) {
             priceFeed.setPrice(2000e8);
@@ -205,7 +188,7 @@ contract HandlerV2 is Test {
 
         amount = bound(amount, 1e6, _scaleDown(debt));
 
-        (, uint128 sharesBefore, ) = poolV2.users(target);
+        (, uint128 sharesBefore,) = poolV2.users(target);
 
         address liquidator = makeAddr("invariant_liquidator");
 
@@ -215,7 +198,7 @@ contract HandlerV2 is Test {
         usdc.approve(address(poolV2), type(uint256).max);
         poolV2.liquidate(target, amount);
 
-        (, uint128 sharesAfter, ) = poolV2.users(target);
+        (, uint128 sharesAfter,) = poolV2.users(target);
 
         priceFeed.setPrice(2000e8);
 
