@@ -1,20 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
-import {
-    AmagiPoolV2,
-    ProtocolPaused,
-    ZeroAmount,
-    InsufficientBalance,
-    InsufficientCollateral,
-    HealthFactorOk,
-    InvalidHealthFactor,
-    InsufficientLiquidity,
-    TransferFailed,
-    PriceExpired,
-    InvalidPrice
-} from "../src/AmagiPoolV2.sol";
+import {Test} from "forge-std/Test.sol";
+import {AmagiPoolV2, ProtocolPaused, ZeroAmount, InsufficientBalance, InsufficientCollateral, HealthFactorOk, InvalidHealthFactor, InsufficientLiquidity, TransferFailed, PriceExpired, InvalidPrice, Unauthorized} from "../src/AmagiPoolV2.sol";
 import {AmagiPool} from "../src/AmagiPool.sol";
 import {MockPriceFeed} from "./mocks/MockPriceFeed.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
@@ -40,7 +28,11 @@ contract AmagiPoolV2Test is Test {
         price = new MockPriceFeed(2000e8);
 
         AmagiPool implementation = new AmagiPool();
-        bytes memory data = abi.encodeWithSelector(AmagiPool.initialize.selector, address(usdc), address(price));
+        bytes memory data = abi.encodeWithSelector(
+            AmagiPool.initialize.selector,
+            address(usdc),
+            address(price)
+        );
 
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), data);
         pool = AmagiPool(payable(address(proxy)));
@@ -69,7 +61,9 @@ contract AmagiPoolV2Test is Test {
 
     function _upgrade() internal {
         AmagiPoolV2 newLogic = new AmagiPoolV2();
-        bytes memory data = abi.encodeWithSelector(AmagiPoolV2.initializeV2.selector);
+        bytes memory data = abi.encodeWithSelector(
+            AmagiPoolV2.initializeV2.selector
+        );
         vm.prank(owner);
         pool.upgradeToAndCall(address(newLogic), data);
 
@@ -80,7 +74,7 @@ contract AmagiPoolV2Test is Test {
         // 1: receive()
         vm.deal(toko, 1 ether);
         vm.prank(toko);
-        (bool success,) = address(poolV2).call{value: 1 ether}("");
+        (bool success, ) = address(poolV2).call{value: 1 ether}("");
         assertTrue(success, "Contract should accept plain ETH");
 
         // 2: getPrice()
@@ -109,7 +103,7 @@ contract AmagiPoolV2Test is Test {
     function test_DepositCalculatesSharesCorrectly() public {
         _userDepositsUsdc(toko, INITIAL_USDC);
 
-        (,, uint256 depositShare) = poolV2.users(toko);
+        (, , uint256 depositShare) = poolV2.users(toko);
 
         assertEq(depositShare, INITIAL_USDC * poolV2.USDC_SCALE());
     }
@@ -134,7 +128,7 @@ contract AmagiPoolV2Test is Test {
         vm.prank(toko);
         poolV2.withdraw(1000e6);
 
-        (,, uint256 shares) = poolV2.users(toko);
+        (, , uint256 shares) = poolV2.users(toko);
         assertEq(shares, 0, "All shares should be removed");
         assertEq(poolV2.totalDeposits(), 0, "Global deposits should be zero");
     }
@@ -193,8 +187,17 @@ contract AmagiPoolV2Test is Test {
         vm.prank(toko);
         poolV2.withdrawCollateral(1 ether);
 
-        (uint128 collateral,,) = poolV2.users(toko);
+        (uint128 collateral, , ) = poolV2.users(toko);
         assertEq(collateral, 1 ether);
+    }
+
+    function test_DepositCollateral_Success() public {
+        vm.deal(toko, 1 ether);
+
+        vm.prank(toko);
+        poolV2.depositCollateral{value: 1 ether}();
+         (uint128 collateral, , ) = poolV2.users(toko);
+        assertGt(collateral, 0);
     }
 
     // Reverts
@@ -242,7 +245,7 @@ contract AmagiPoolV2Test is Test {
         vm.prank(noa);
         poolV2.borrow(1000e6);
 
-        (, uint128 borrowSharesBefore,) = poolV2.users(noa);
+        (, uint128 borrowSharesBefore, ) = poolV2.users(noa);
         uint256 totalBSharesBefore = poolV2.totalBorrowShares();
 
         vm.warp(block.timestamp + 10 days);
@@ -252,7 +255,7 @@ contract AmagiPoolV2Test is Test {
         poolV2.repay(500e6);
         vm.stopPrank();
 
-        (, uint128 borrowSharesAfter,) = poolV2.users(noa);
+        (, uint128 borrowSharesAfter, ) = poolV2.users(noa);
         uint256 sharesBurned = totalBSharesBefore - poolV2.totalBorrowShares();
 
         assertGt(uint256(borrowSharesBefore), uint256(borrowSharesAfter));
@@ -286,7 +289,11 @@ contract AmagiPoolV2Test is Test {
         uint256 util = poolV2.getUtilization();
 
         uint256 rate = poolV2.getBorrowRate(util);
-        assertGt(rate, poolV2.BASE_RATE(), "Rate should increase due to high utilization");
+        assertGt(
+            rate,
+            poolV2.BASE_RATE(),
+            "Rate should increase due to high utilization"
+        );
         assertGt(rate, 0.1e18, "Rate should be very high due to SLOPE2");
     }
 
@@ -295,7 +302,7 @@ contract AmagiPoolV2Test is Test {
 
         _userDepositsUsdc(toko, 500e6);
 
-        (,, uint256 shares) = poolV2.users(toko);
+        (, , uint256 shares) = poolV2.users(toko);
         assertEq(shares, 1500e6 * poolV2.USDC_SCALE());
     }
 
@@ -384,10 +391,19 @@ contract AmagiPoolV2Test is Test {
         uint256 expectedCollateral = (500e18 * 1e18 * 105) / (1600e18 * 100);
         uint256 actualCollateral = address(liquidator).balance - balanceBefore;
 
-        assertApproxEqAbs(actualCollateral, expectedCollateral, 1e10, "Liquidator bonus incorrect");
+        assertApproxEqAbs(
+            actualCollateral,
+            expectedCollateral,
+            1e10,
+            "Liquidator bonus incorrect"
+        );
 
-        (, uint128 borrowSharesAfter,) = poolV2.users(toko);
-        assertLt(uint256(borrowSharesAfter), 1400e18, "Toko's debt should decrease");
+        (, uint128 borrowSharesAfter, ) = poolV2.users(toko);
+        assertLt(
+            uint256(borrowSharesAfter),
+            1400e18,
+            "Toko's debt should decrease"
+        );
     }
 
     function test_BadDebtLiquidation() public {
@@ -406,9 +422,14 @@ contract AmagiPoolV2Test is Test {
         uint256 expectedCollateral = 1e18;
         uint256 actualCollateral = address(liquidator).balance - balanceBefore;
 
-        assertApproxEqAbs(actualCollateral, expectedCollateral, 1e10, "Liquidator bonus incorrect");
+        assertApproxEqAbs(
+            actualCollateral,
+            expectedCollateral,
+            1e10,
+            "Liquidator bonus incorrect"
+        );
 
-        (uint128 collateral,,) = poolV2.users(toko);
+        (uint128 collateral, , ) = poolV2.users(toko);
         assertEq(collateral, 0, "Toko still has a debt");
     }
 
@@ -430,7 +451,7 @@ contract AmagiPoolV2Test is Test {
             liqBalanceBefore - 1000e6,
             "Should only charge the actual debt even if user requests more"
         );
-        (, uint128 borrowSharesAfter,) = poolV2.users(toko);
+        (, uint128 borrowSharesAfter, ) = poolV2.users(toko);
         assertEq(borrowSharesAfter, 0, "Debt should be fully cleared");
     }
 
@@ -478,6 +499,20 @@ contract AmagiPoolV2Test is Test {
         poolV2.borrow(100e6);
     }
 
+    function test_RevertIfAnsweredRoundStale() public {
+        _userDepositsEth(toko, 1 ether);
+
+        // make price valid otherwise
+        price.setPrice(2000e8);
+
+        // force stale round condition
+        price.setRoundData(2, 1);
+
+        vm.prank(toko);
+        vm.expectRevert(InvalidPrice.selector);
+        poolV2.borrow(100e6);
+    }
+
     /* -------------------------------------------
     Access Control & Pausing
     ---------------------------------------------*/
@@ -489,9 +524,46 @@ contract AmagiPoolV2Test is Test {
         vm.stopPrank();
 
         _userDepositsUsdc(toko, 1000e6);
-        (,, uint256 depositShare) = poolV2.users(toko);
+        (, , uint256 depositShare) = poolV2.users(toko);
 
         assertGt(depositShare, 0);
+    }
+
+    function test_GuardianCanPause() public {
+        address guardian = makeAddr("Guardian");
+
+        vm.prank(owner);
+        poolV2.setGuardian(guardian);
+
+        vm.prank(guardian);
+        poolV2.setPaused(true);
+
+        assertTrue(poolV2.paused());
+    }
+
+    function test_SetGuardianOnlyOwner() public {
+        address guardian = makeAddr("Guardian");
+        vm.prank(toko);
+        vm.expectRevert(); // or Unauthorized if defined
+        poolV2.setGuardian(guardian);
+    }
+
+    function test_NewGuardianOverridesOld() public {
+        address g1 = makeAddr("g1");
+        address g2 = makeAddr("g2");
+
+        vm.prank(owner);
+        poolV2.setGuardian(g1);
+
+        vm.prank(owner);
+        poolV2.setGuardian(g2);
+
+        vm.prank(g1);
+        vm.expectRevert(Unauthorized.selector);
+        poolV2.setPaused(true);
+
+        vm.prank(g2);
+        poolV2.setPaused(true);
     }
 
     // Reverts
@@ -590,7 +662,9 @@ contract AmagiPoolV2Test is Test {
 
     function test_UpgradeOnlyOwner() public {
         AmagiPoolV2 newImpl = new AmagiPoolV2();
-        bytes memory data = abi.encodeWithSelector(AmagiPoolV2.initializeV2.selector);
+        bytes memory data = abi.encodeWithSelector(
+            AmagiPoolV2.initializeV2.selector
+        );
         vm.prank(toko);
         vm.expectRevert();
         pool.upgradeToAndCall(address(newImpl), data);
@@ -604,6 +678,51 @@ contract AmagiPoolV2Test is Test {
         vm.prank(address(badUser));
         vm.expectRevert(TransferFailed.selector);
         badUser.withdraw(address(poolV2), 1 ether);
+    }
+
+    // getHealthFactor returns max when no debt
+    function test_HealthFactorMaxWhenNoDebt() public {
+        _userDepositsEth(toko, 1 ether);
+        uint256 hf = poolV2.getHealthFactor(toko);
+        assertEq(hf, type(uint256).max);
+    }
+
+    // maxBorrow returns zero when underwater
+    function test_MaxBorrowZeroWhenUndercollateralized() public {
+        _userDepositsEth(toko, 1 ether);
+
+        vm.prank(toko);
+        poolV2.borrow(1400e6);
+
+        price.setPrice(1000e8);
+        uint256 maxBorrowAmount = poolV2.getMaxBorrow(toko);
+
+        assertEq(maxBorrowAmount, 0);
+    }
+
+    function test_GetMaxBorrow() public {
+        _userDepositsEth(toko, 1 ether);
+
+        uint256 borrowAmount = 1000e6;
+        vm.prank(toko);
+        poolV2.borrow(borrowAmount);
+
+        uint256 maxBorrowAmount = 1500e6 - borrowAmount;
+
+        assertEq(
+            poolV2.getMaxBorrow(toko),
+            maxBorrowAmount * poolV2.USDC_SCALE()
+        );
+    }
+
+    function test_getUserCollateralValue() public {
+        uint256 ethAmount = 1.5 ether;
+        _userDepositsEth(toko, ethAmount);
+
+        uint256 _price = poolV2.getPrice();
+        uint256 collateralValue = (ethAmount * _price) / poolV2.PRECISION();
+
+        assertEq(collateralValue, poolV2.getUserCollateralValue(toko));
     }
 }
 

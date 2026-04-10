@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {AmagiPoolV2} from "../../src/AmagiPoolV2.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 import {MockPriceFeed} from "../mocks/MockPriceFeed.sol";

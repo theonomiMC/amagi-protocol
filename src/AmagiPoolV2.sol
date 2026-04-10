@@ -31,8 +31,15 @@ error TransferFailed();
 error InvalidPrice();
 /// @notice Thrown when the Chainlink oracle price is older than 24 hours
 error PriceExpired();
+/// @notice Thrown when the some dunctions is called by unauthorized user
+error Unauthorized();
 
-contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPSUpgradeable {
+contract AmagiPoolV2 is
+    ReentrancyGuard,
+    Initializable,
+    OwnableUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
 
@@ -87,7 +94,24 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
     /// @notice Emitted when a user repays their USDC debt
     event Repay(address indexed user, uint256 amount);
     /// @notice Emitted when a position is liquidated
-    event Liquidate(address indexed user, address indexed liquidator, uint256 amount);
+    event Liquidate(
+        address indexed user,
+        address indexed liquidator,
+        uint256 amount
+    );
+    /// @notice Emitted when IRM parameters are updated
+    event IRMParamsUpdated(
+        uint256 indexed _baseRate,
+        uint256 _slop1,
+        uint256 _slop2,
+        uint256 _optimalUtil
+    );
+    /// @notice Emitted when paused state changes
+    event Paused(address indexed by, bool status);
+    event GuardianChanged(
+        address indexed oldGuardian,
+        address indexed newGuardian
+    );
 
     // V2 states
     /// @notice paused status. by default is false (V2 variable)
@@ -98,6 +122,7 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
     uint256 public SLOPE1;
     uint256 public SLOPE2;
     uint256 public OPTIMAL_UTIL;
+    address public guardian;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -118,20 +143,42 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         paused = false;
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {}
 
-    function setIrmParams(uint256 _baseRate, uint256 _slope1, uint256 _slope2, uint256 _optimalUtil)
-        external
-        onlyOwner
-    {
+    modifier onlyOwnerOrGuardian() {
+        if (msg.sender != guardian && msg.sender != owner()) {
+            revert Unauthorized();
+        }
+        _;
+    }
+
+    function setIrmParams(
+        uint256 _baseRate,
+        uint256 _slope1,
+        uint256 _slope2,
+        uint256 _optimalUtil
+    ) external onlyOwner {
         BASE_RATE = _baseRate;
         SLOPE1 = _slope1;
         SLOPE2 = _slope2;
         OPTIMAL_UTIL = _optimalUtil;
+
+        emit IRMParamsUpdated(_baseRate, _slope1, _slope2, _optimalUtil);
     }
 
-    function setPaused(bool status) public onlyOwner {
+    /// @notice Sets the user guardian
+    /// @param _newGuardian new guardian address
+    function setGuardian(address _newGuardian) external onlyOwner {
+        address oldGuardian = guardian;
+        guardian = _newGuardian;
+        emit GuardianChanged(oldGuardian, _newGuardian);
+    }
+
+    function setPaused(bool status) public onlyOwnerOrGuardian {
         paused = status;
+        emit Paused(msg.sender, status);
     }
 
     function getUtilization() public view returns (uint256) {
@@ -150,7 +197,12 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         if (utilization <= OPTIMAL_UTIL) {
             rate = BASE_RATE + (SLOPE1 * utilization) / PRECISION;
         } else {
-            rate = BASE_RATE + (SLOPE1 * OPTIMAL_UTIL) / PRECISION + (SLOPE2 * (utilization - OPTIMAL_UTIL)) / PRECISION;
+            rate =
+                BASE_RATE +
+                (SLOPE1 * OPTIMAL_UTIL) /
+                PRECISION +
+                (SLOPE2 * (utilization - OPTIMAL_UTIL)) /
+                PRECISION;
         }
         return rate;
     }
@@ -160,6 +212,45 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         uint256 balance = _toAssets(user.deposit, globalDepositIndex);
 
         return balance / USDC_SCALE;
+    }
+
+    /// @notice Gets the user collateral value
+    /// @param _user user
+    /// @return returns user collateral value in 1e18 format
+    function getUserCollateralValue(
+        address _user
+    ) public view returns (uint256) {
+        UserData storage user = users[_user];
+        uint256 collateralValue = (user.collateral * _price()) / PRECISION;
+
+        return collateralValue;
+    }
+
+    /// @notice Gets the user health factor
+    /// @param _user user
+    /// @return health factor in 1e18 format
+    function getHealthFactor(address _user) public view returns (uint256) {
+        UserData storage user = users[_user];
+        uint256 debt = _toAssets(user.borrowShares, globalBorrowIndex);
+        if (debt == 0) return type(uint256).max;
+
+        uint256 collateralValue = (user.collateral * _price()) / PRECISION;
+        uint256 hf = (collateralValue * LIQ_THRESHOLD * PRECISION) /
+            (100 * debt);
+
+        return hf;
+    }
+
+    /// @notice Gets the user max borrow amount
+    /// @param _user user
+    /// @return max borrow amoint
+    function getMaxBorrow(address _user) public view returns (uint256) {
+        UserData storage user = users[_user];
+        uint256 collateralValue = (user.collateral * _price()) / PRECISION;
+        uint256 debt = _toAssets(user.borrowShares, globalBorrowIndex);
+        uint256 totalMaxBorrow = (collateralValue * LTV) / 100;
+        if (debt > totalMaxBorrow) return 0;
+        return totalMaxBorrow - debt;
     }
 
     /// @notice Gets the normalized price of the asset from the oracle
@@ -194,7 +285,7 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
 
     /// @notice Deposits ETH as collateral for borrowing
     /// @dev msg.value is used directly; no amount parameter needed
-    function depositCollateral() external payable {
+    function depositCollateral() external payable nonReentrant {
         if (paused) revert ProtocolPaused();
         if (msg.value == 0) revert ZeroAmount();
 
@@ -237,7 +328,7 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         if (paused) revert ProtocolPaused();
         if (amount == 0) revert ZeroAmount();
 
-        (uint256 bIndex,) = _updateIndex();
+        (uint256 bIndex, ) = _updateIndex();
         UserData storage user = users[msg.sender];
 
         if (user.collateral < amount) revert InsufficientBalance();
@@ -254,7 +345,7 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
             revert InvalidHealthFactor();
         }
 
-        (bool success,) = msg.sender.call{value: amount}("");
+        (bool success, ) = msg.sender.call{value: amount}("");
         if (!success) revert TransferFailed();
 
         emit WithdrawCollateral(msg.sender, amount);
@@ -267,7 +358,7 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         if (paused) revert ProtocolPaused();
         if (amount == 0) revert ZeroAmount();
 
-        (uint256 bIndex,) = _updateIndex();
+        (uint256 bIndex, ) = _updateIndex();
 
         UserData storage user = users[msg.sender];
         uint256 price = _price();
@@ -301,7 +392,7 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         if (paused) revert ProtocolPaused();
         if (amount == 0) revert ZeroAmount();
 
-        (uint256 bIndex,) = _updateIndex();
+        (uint256 bIndex, ) = _updateIndex();
 
         UserData storage user = users[msg.sender];
         uint256 debt = _toAssets(user.borrowShares, bIndex);
@@ -329,11 +420,14 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
     /// @dev Liquidator covers part or all of the debt and receives collateral plus a bonus
     /// @param target The address of the user to be liquidated
     /// @param debtToCover The amount of USDC debt the liquidator wants to cover (6 decimals)
-    function liquidate(address target, uint256 debtToCover) external nonReentrant {
+    function liquidate(
+        address target,
+        uint256 debtToCover
+    ) external nonReentrant {
         if (paused) revert ProtocolPaused();
         if (debtToCover == 0) revert ZeroAmount();
 
-        (uint256 bIndex,) = _updateIndex();
+        (uint256 bIndex, ) = _updateIndex();
 
         UserData storage user = users[target];
         uint256 price = _price();
@@ -346,11 +440,14 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         uint256 scaledAmount = debtToCover * USDC_SCALE;
         if (scaledAmount > debt) scaledAmount = debt;
 
-        uint256 collateralOut = (scaledAmount * PRECISION * (100 + LIQ_BONUS)) / (price * 100);
+        uint256 collateralOut = (scaledAmount * PRECISION * (100 + LIQ_BONUS)) /
+            (price * 100);
 
         if (collateralOut > user.collateral) {
             collateralOut = user.collateral;
-            scaledAmount = (collateralOut * price * 100) / (PRECISION * (100 + LIQ_BONUS));
+            scaledAmount =
+                (collateralOut * price * 100) /
+                (PRECISION * (100 + LIQ_BONUS));
         }
         uint256 shares = _toShares(scaledAmount, bIndex);
 
@@ -363,7 +460,7 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         uint256 actualDebtToCover = scaledAmount / USDC_SCALE;
         usdc.safeTransferFrom(msg.sender, address(this), actualDebtToCover);
 
-        (bool success,) = msg.sender.call{value: collateralOut}("");
+        (bool success, ) = msg.sender.call{value: collateralOut}("");
         if (!success) revert TransferFailed();
 
         emit Liquidate(target, msg.sender, collateralOut);
@@ -372,14 +469,20 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
     // @notice Calculate assets to shares
     /// @param assets Amount of assets
     /// @param index Current index
-    function _toShares(uint256 assets, uint256 index) internal pure returns (uint256) {
+    function _toShares(
+        uint256 assets,
+        uint256 index
+    ) internal pure returns (uint256) {
         return (assets * PRECISION) / index;
     }
 
     /// @notice Calculate shares to assets
     /// @param shares Amount of shares
     /// @param index Current index
-    function _toAssets(uint256 shares, uint256 index) internal pure returns (uint256) {
+    function _toAssets(
+        uint256 shares,
+        uint256 index
+    ) internal pure returns (uint256) {
         return (shares * index) / PRECISION;
     }
 
@@ -396,10 +499,18 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
         uint256 utilization = getUtilization();
         uint256 borrowRate = getBorrowRate(utilization);
 
-        bIndex += Math.mulDiv(bIndex, borrowRate * timeElapsed, PRECISION * 365 days);
+        bIndex += Math.mulDiv(
+            bIndex,
+            borrowRate * timeElapsed,
+            PRECISION * 365 days
+        );
 
         uint256 depositRate = (borrowRate * utilization) / PRECISION;
-        dIndex += Math.mulDiv(dIndex, depositRate * timeElapsed, PRECISION * 365 days);
+        dIndex += Math.mulDiv(
+            dIndex,
+            depositRate * timeElapsed,
+            PRECISION * 365 days
+        );
 
         // update SSTOR
         globalBorrowIndex = bIndex;
@@ -413,12 +524,19 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
     /// @dev Reverts if price is stale (>24h) or non-positive
     /// @return The normalized price in 1e18 format
     function _price() internal view returns (uint256) {
-        (, int256 p,, uint256 updatedAt,) = priceFeed.latestRoundData();
+        (
+            uint80 roundId,
+            int256 p,
+            ,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) = priceFeed.latestRoundData();
 
         uint8 decimals = priceFeedDecimals;
 
         if (p <= 0) revert InvalidPrice();
         if (block.timestamp - updatedAt > 24 hours) revert PriceExpired();
+        if (answeredInRound < roundId) revert InvalidPrice();
 
         // casting to 'uint256' is safe because p > 0 is checked above (if p <= 0 revert)
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -439,10 +557,14 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
     /// @param collateralValue Total ETH collateral value in USD (18 decimals)
     /// @param debt Total outstanding debt in USD (18 decimals)
     /// @return True if the position can be liquidated, false otherwise
-    function _isLiquidatable(uint256 collateralValue, uint256 debt) internal pure returns (bool) {
+    function _isLiquidatable(
+        uint256 collateralValue,
+        uint256 debt
+    ) internal pure returns (bool) {
         if (debt == 0) return false;
 
-        uint256 hf = (collateralValue * LIQ_THRESHOLD * PRECISION) / (100 * debt);
+        uint256 hf = (collateralValue * LIQ_THRESHOLD * PRECISION) /
+            (100 * debt);
 
         return hf < PRECISION;
     }
@@ -451,5 +573,5 @@ contract AmagiPoolV2 is ReentrancyGuard, Initializable, OwnableUpgradeable, UUPS
     receive() external payable {}
 
     /// @dev Storage gap for future upgrades — preserves storage layout across versions
-    uint256[43] private __gap;
+    uint256[42] private __gap;
 }

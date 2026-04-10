@@ -5,6 +5,8 @@ contract MockPriceFeed {
     int256 public latestPrice;
     uint256 public lastUpdated;
     uint8 private _decimals;
+    uint80 public roundId = 1;
+    uint80 public answeredInRound = 1;
 
     constructor(int256 _price) {
         latestPrice = _price;
@@ -26,6 +28,11 @@ contract MockPriceFeed {
         lastUpdated = block.timestamp;
     }
 
+    function setRoundData(uint80 _roundId, uint80 _answeredInRound) external {
+        roundId = _roundId;
+        answeredInRound = _answeredInRound;
+    }
+
     function setLastUpdated(uint256 _timestamp) public {
         lastUpdated = _timestamp;
     }
@@ -34,13 +41,19 @@ contract MockPriceFeed {
         external
         view
         returns (
-            uint80 roundId,
+            uint80 _roundId,
             int256 answer,
             uint256 startedAt,
-            uint256 updatedAt, // აი აქ უნდა დაბრუნდეს შენახული დრო
-            uint80 answeredInRound
+            uint256 updatedAt,
+            uint80 _answeredInRound
         )
     {
-        return (1, latestPrice, block.timestamp, lastUpdated, 1);
+        return (
+            roundId,
+            latestPrice,
+            block.timestamp,
+            lastUpdated,
+            answeredInRound
+        );
     }
 }

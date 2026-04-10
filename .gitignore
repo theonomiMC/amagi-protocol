@@ -20,4 +20,4 @@ docs/
 # Dotenv file
 .env
 
-.DS_Store
+.DS_Storebroadcast/

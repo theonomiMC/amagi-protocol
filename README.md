@@ -5,7 +5,7 @@ This branch contains the **V2 Upgrade** of the Amagi Lending Protocol. The core 
 ## 🔗 Contract Addresses (Sepolia)
 
 - **Proxy (Entry Point):** `0xfA7f34169E182737fa06abAC901E361b42b445A4`
-- **Implementation (V2):** `0xfA7f34169E182737fa06abAC901E361b42b445A4`
+- **Implementation (V2):** `0x4f8C9893122BDcF0835f4d0200D51C752a63D1d1`
 - **Underlying Asset (USDC):** `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`
 
 ## 🔧 Quick Start
