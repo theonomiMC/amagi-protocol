@@ -129,6 +129,8 @@ contract AmagiPoolV2 is
         _disableInitializers();
     }
 
+    /// @notice Initializes V2 state variables — sets IRM parameters, deposit/borrow indexes and unpauses the protocol
+    /// @dev Uses reinitializer(2) to ensure this can only be called once after the V2 upgrade
     function initializeV2() public reinitializer(2) onlyOwner {
         BASE_RATE = 0.02e18;
         SLOPE1 = 0.1e18;
@@ -143,6 +145,8 @@ contract AmagiPoolV2 is
         paused = false;
     }
 
+    /// @notice Restricts UUPS upgrade authorization to the contract owner only
+    /// @param newImplementation Address of the new implementation contract
     function _authorizeUpgrade(
         address newImplementation
     ) internal override onlyOwner {}
@@ -154,6 +158,12 @@ contract AmagiPoolV2 is
         _;
     }
 
+    /// @notice Updates the interest rate model parameters
+    /// @dev Only callable by owner — emits IRMParamsUpdated on success
+    /// @param _baseRate Minimum interest rate at 0% utilization (1e18 format)
+    /// @param _slope1 Rate increase per unit utilization below optimal (1e18 format)
+    /// @param _slope2 Rate increase per unit utilization above optimal (1e18 format)
+    /// @param _optimalUtil Target utilization ratio (1e18 format)
     function setIrmParams(
         uint256 _baseRate,
         uint256 _slope1,
@@ -176,11 +186,17 @@ contract AmagiPoolV2 is
         emit GuardianChanged(oldGuardian, _newGuardian);
     }
 
+    /// @notice Pauses or unpauses the protocol
+    /// @dev Can be called by owner or guardian — useful for emergency stops
+    /// @param status True to pause, false to unpause
     function setPaused(bool status) public onlyOwnerOrGuardian {
         paused = status;
         emit Paused(msg.sender, status);
     }
 
+    /// @notice Returns the current utilization ratio of the pool
+    /// @dev Utilization = totalBorrowed / totalLiquidity, scaled to 1e18
+    /// @return Utilization ratio in 1e18 format (e.g. 0.8e18 = 80%)
     function getUtilization() public view returns (uint256) {
         if (totalDeposits == 0) return 0; // totalDeposits = Total Shares
 
@@ -191,6 +207,10 @@ contract AmagiPoolV2 is
         return (totalBorrowed * PRECISION) / totalLiquidity;
     }
 
+    /// @notice Calculates the current borrow interest rate based on utilization
+    /// @dev Uses a two-slope IRM: gradual increase below optimal, steep above it
+    /// @param utilization Current utilization ratio in 1e18 format
+    /// @return Annualized borrow rate in 1e18 format
     function getBorrowRate(uint256 utilization) public view returns (uint256) {
         uint256 rate;
 
@@ -207,6 +227,9 @@ contract AmagiPoolV2 is
         return rate;
     }
 
+    /// @notice Returns the current USDC deposit balance of a user including accrued interest
+    /// @param _user Address of the user
+    /// @return Balance in USDC (6 decimals)
     function balanceOf(address _user) public view returns (uint256) {
         UserData storage user = users[_user];
         uint256 balance = _toAssets(user.deposit, globalDepositIndex);
@@ -466,7 +489,7 @@ contract AmagiPoolV2 is
         emit Liquidate(target, msg.sender, collateralOut);
     }
 
-    // @notice Calculate assets to shares
+    /// @notice Calculate assets to shares
     /// @param assets Amount of assets
     /// @param index Current index
     function _toShares(
