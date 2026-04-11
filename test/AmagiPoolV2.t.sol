@@ -196,7 +196,7 @@ contract AmagiPoolV2Test is Test {
 
         vm.prank(toko);
         poolV2.depositCollateral{value: 1 ether}();
-         (uint128 collateral, , ) = poolV2.users(toko);
+        (uint128 collateral, , ) = poolV2.users(toko);
         assertGt(collateral, 0);
     }
 
@@ -529,6 +529,14 @@ contract AmagiPoolV2Test is Test {
         assertGt(depositShare, 0);
     }
 
+    function test_GuardianCannotSetIrm() public {
+         address guardian = makeAddr("Guardian");
+        
+        vm.prank(guardian);
+        vm.expectRevert();
+        poolV2.setIrmParams(0.1e18, 1e18,4.5e18,8e18);
+    }
+    
     function test_GuardianCanPause() public {
         address guardian = makeAddr("Guardian");
 
@@ -685,6 +693,14 @@ contract AmagiPoolV2Test is Test {
         _userDepositsEth(toko, 1 ether);
         uint256 hf = poolV2.getHealthFactor(toko);
         assertEq(hf, type(uint256).max);
+    }
+
+    function test_getHealthFactor() public {
+        _userDepositsEth(toko, 1 ether);
+        vm.prank(toko);
+        poolV2.borrow(1000e6);
+        uint256 hf = poolV2.getHealthFactor(toko);
+        assertGt(hf, 1e18);
     }
 
     // maxBorrow returns zero when underwater
